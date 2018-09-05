@@ -1,13 +1,12 @@
 class config(object):
     def __init__(self):
-        #self.data_path='./data/output.pkl'
-        self.data_path='../data/1-billion/1-billion-train.mini.tok.pkl'
-        self.use_data_path='../data/jfleg-master/dev/dev.src'
-        self.dict_path='../data/1-billion'
-        self.emb_path='../data/emb.pkl'
-        self.liguistic_path='../linguistics'
-        self.pos_path='../POS/english-models'
-        #self.use_data_path='/data00/home/miaoning/data/wikianswer/origin_val_small'
+        self.data_path='../data/1-billion/1-billion.pkl'                         #path of data for training language model
+        self.use_data_path='../data/jfleg-master/dev/dev.src'           #data path of erroneous sentence for correction
+        self.dict_path='../data/1-billion'                                               #dictionary path
+        self.emb_path='../data/emb.pkl'                                              #word embedding path, used when config.sim=='word_max' or config.sim=='combine'
+        self.skipthoughts_path='../skip_thought'                                 #path of skipthoughts, used when config.sim=='skipthoughts' or config.sim=='combine'        
+        self.liguistic_path='../linguistics'                                               #path of data of liguistics package
+        self.pos_path='../POS/english-models'                                    #path for pos tagger
         self.dict_size=50000
         self.vocab_size=50003
         self.forward_save_path='./model/forward.ckpt'
@@ -18,7 +17,6 @@ class config(object):
         self.shuffle=False
         self.use_log_path='./log/use_log.txt'
         
-        self.skipthoughts_path='../skip_thought'
         
         self.batch_size=32
         self.num_steps=50
@@ -39,12 +37,12 @@ class config(object):
         self.sample_sentence_number=119
         
         self.search_size=100
-        self.use_output_path='./output/output_dev'
+        self.use_output_path='./output/output_dev'                      #output path
       
         
-        self.action_prob=[0.3,0.2,0.2,0.3]
+        self.action_prob=[0.3,0.3,0.3,0.1]                                          #the prior of 4 actions
         self.threshold=0.1
-        self.sim=None
+        self.sim=None                                                                        #matching model
         self.sim_word=True
         self.double_LM=False
         self.keyword_pos=False

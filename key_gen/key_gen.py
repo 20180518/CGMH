@@ -8,7 +8,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.layers import core as layers_core
 import reader
-import util
 from config import config
 config=config()
 from tensorflow.python.client import device_lib
@@ -22,19 +21,8 @@ logging = tf.logging
 def data_type():
   return tf.float16 if config.use_fp16 else tf.float32
 
-
-class PTBInput(object):
-  """The input data."""
-
-  def __init__(self, data, name=None):
-    self.batch_size = batch_size = config.batch_size
-    self.num_steps = num_steps = config.num_steps
-    self.epoch_size = ((len(data) // batch_size) - 1) // num_steps
-    
-
-
 class PTBModel(object):
-  """The PTB model."""
+  #The language model.
 
   def __init__(self, is_training, is_test_LM=False):
     self._is_training = is_training
@@ -91,10 +79,7 @@ class PTBModel(object):
           reuse=not is_training)
 
   def _build_rnn_graph_lstm(self, inputs, sequence_length, is_training):
-    """Build the inference graph using canonical LSTM cells."""
-    # Slightly better results can be obtained with forget gate biases
-    # initialized to 1 but the hyperparameters of the model would need to be
-    # different than reported in the paper.
+    #Build the inference graph using canonical LSTM cells.
     def make_cell():
       cell = self._get_lstm_cell( is_training)
       if is_training and config.keep_prob < 1:
@@ -107,52 +92,24 @@ class PTBModel(object):
     outputs, states=tf.nn.dynamic_rnn(cell=cell, inputs=inputs, sequence_length=sequence_length, dtype=data_type())
 
     return outputs
-  
-  def get_test_LM(self):
-    
 
-    return outputs
-        
-  @property
-  def input(self):
-    return self._input
-    
-  @property
-  def output_prob(self):
-    return self._output_prob
-  
-  @property
-  def target(self):
-    return self._target
-   
-  @property
-  def sequence_length(self):
-    return self._sequence_length
-
-  @property
-  def cost(self):
-    return self._cost
-
-  @property
-  def train_op(self):
-    return self._train_op
 
 
 def run_epoch(sess, model, input, sequence_length, target=None, mode='train'):
-  """Runs the model on the given data."""
+  #Runs the model on the given data.
   if mode=='train':
+    #train language model
     _,cost = sess.run([model.train_op, model.cost], feed_dict={model.input: input, model.target:target, model.sequence_length:sequence_length})
     return cost
   elif mode=='test':
+    #test language model
     cost = sess.run(model.cost, feed_dict={model.input: input, model.target:target, model.sequence_length:sequence_length})
     return cost
   else:
-    #output_prob = sess.run(model.output_prob, feed_dict={model.input: input, model.sequence_length:sequence_length})
+    #use the language model to calculate sentence probability
     output_prob = sess.run(model.output_prob, feed_dict={model.input: input, model.sequence_length:sequence_length})
     return output_prob
-def write_log(str, path):
-  with open(path, 'a') as g:
-    g.write(str+'\n')
+
 
 def main(_):
   if os.path.exists(config.forward_log_path) and config.mode=='forward':
@@ -193,6 +150,7 @@ def main(_):
   with tf.Session(config=configs) as session:
     session.run(init)
     if config.mode=='forward':
+      #train forward language model
       train_data, test_data = reader.read_data(config.data_path, config.num_steps)
       test_mean_old=15.0
       
@@ -216,6 +174,7 @@ def main(_):
         write_log('train ppl:'+str(np.mean(train_ppl_list))+'\t'+'test ppl:'+str(test_mean), config.forward_log_path)
     
     if config.mode=='backward':
+      #train backward language model
       train_data, test_data = reader.read_data(config.data_path, config.num_steps)
       test_mean_old=15.0
       for epoch in range(config.max_epoch):
@@ -241,13 +200,15 @@ def main(_):
         write_log('train ppl:'+str(np.mean(train_ppl_list))+'\t'+'test ppl:'+str(test_mean), config.backward_log_path)
   
     if config.mode=='use':
+      #CGMH sampling for key_gen
       sim=config.sim
-      #keyword stable
-
       saver_forward.restore(session, config.forward_save_path)
       saver_backward.restore(session, config.backward_save_path)
       config.shuffle=False
+      
+      #keyword input
       if config.keyboard_input==True:
+        #input from keyboard if key_input is not empty
         key_input=raw_input('please input a sentence\n')
         if key_input=='':
           use_data = reader.read_data_use(config.use_data_path, config.num_steps)
@@ -259,10 +220,12 @@ def main(_):
             sta_vec[i]=1
           use_data = reader.array_data([key_input], config.num_steps, config.dict_size)
       else:
+        #load keywords from file
         use_data, sta_vec_list = reader.read_data_use(config.use_data_path, config.num_steps)
       config.batch_size=1
-      #use_data.length=1 #######################################
+
       for sen_id in range(use_data.length):
+        #generate for each sequence of keywords
         if config.keyboard_input==False:
           sta_vec=sta_vec_list[sen_id%(config.num_steps-1)]
         
@@ -271,12 +234,12 @@ def main(_):
         input, sequence_length, _=use_data(1, sen_id)
         input_original=input[0]
         
-
         pos=0
         outputs=[]
         output_p=[]
         for iter in range(config.sample_time):
-        #ind is the index of the selected word, regardless of the beginning token.
+          #ind is the index of the selected word, regardless of the beginning token.
+          #sample config.sample_time times for each set of keywords
           config.sample_prior=[1,10.0/sequence_length[0],1,1]
           if iter%20<10:
             config.threshold=0
@@ -284,15 +247,13 @@ def main(_):
             config.threshold=0.5
           ind=pos%(sequence_length[0])
           action=choose_action(config.action_prob)
-          #tem
           print(' '.join(id2sen(input[0])))
-          #tem_end
-          #print(sta_vec, sequence_length[0], ind)
-       
-          if sta_vec[ind]==1 and action in [0, 2]:                  #stop skipping words
+
+          if sta_vec[ind]==1 and action in [0, 2]:                  
+            #skip words that we do not change(original keywords)
             action=3
           
-        #change word
+          #word replacement (action: 0)
           if action==0 and ind<sequence_length[0]-1: 
             prob_old=run_epoch(session, mtest_forward, input, sequence_length, mode='use')
             if config.double_LM==True:
@@ -328,7 +289,6 @@ def main(_):
               prob_candidate.append(tem)
           
             prob_candidate=np.array(prob_candidate)
-            #similarity_candidate=np.array([similarity(x, input_original) for x in input_candidate])
             if sim!=None:
               similarity_candidate=similarity_batch(input_candidate, input_original,sta_vec)
               prob_candidate=prob_candidate*similarity_candidate
@@ -338,12 +298,11 @@ def main(_):
             if input_candidate[prob_candidate_ind][ind+1]<config.dict_size and ( prob_candidate_prob>prob_old_prob*config.threshold or just_acc()==0):
               input=input_candidate[prob_candidate_ind:prob_candidate_ind+1]
             pos+=1
-            #old_place=len(prob_mul)-list(np.argsort(prob_mul)).index(input[0][ind+1])
-            #write_log('step:'+str(iter)+'action:0 prob_old:'+str(prob_old_prob)+' prob_new:'+str(prob_candidate_prob)+' '+str(old_place)+' '+str(sta_vec.index(1))+' '+str(ind), config.use_log_path)
             print('action:0', 1, prob_old_prob, prob_candidate_prob, prob_candidate_norm[prob_candidate_ind], similarity_old)
             if ' '.join(id2sen(input[0])) not in output_p:
               outputs.append([' '.join(id2sen(input[0])), prob_old_prob])
-          #add word
+          
+          #word insertion(action:1)
           if action==1: 
             if sequence_length[0]>=config.num_steps:
               action=3
@@ -366,7 +325,6 @@ def main(_):
                 tem*=prob_candidate_pre[i][j+1][config.dict_size+1]
                 prob_candidate.append(tem)
               prob_candidate=np.array(prob_candidate)*config.sample_prior[1]
-              #similarity_candidate=np.array([similarity(x, input_original) for x in input_candidate])
               if sim!=None:
                 similarity_candidate=similarity_batch(input_candidate, input_original,sta_vec)
                 prob_candidate=prob_candidate*similarity_candidate
@@ -391,13 +349,12 @@ def main(_):
                 prob_old_prob=prob_old_prob*similarity_old
               else:
                 similarity_old=-1
+              #alpha is acceptance ratio of current proposal
               alpha=min(1, prob_candidate_prob*config.action_prob[2]/(prob_old_prob*config.action_prob[1]*prob_candidate_norm[prob_candidate_ind]))
-              #alpha=min(1, prob_candidate_prob*config.action_prob[2]/(prob_old_prob*config.action_prob[1]))
               print ('action:1',alpha, prob_old_prob,prob_candidate_prob, prob_candidate_norm[prob_candidate_ind], similarity_old)
               if ' '.join(id2sen(input[0])) not in output_p:
                 outputs.append([' '.join(id2sen(input[0])), prob_old_prob])
               if choose_action([alpha, 1-alpha])==0 and input_candidate[prob_candidate_ind][ind+1]<config.dict_size and (prob_candidate_prob>prob_old_prob* config.threshold or just_acc()==0):
-              #write_log('step:'+str(iter)+'action:1 prob_old:'+str(prob_old_prob)+' prob_new:'+str(prob_candidate_prob)+' '+str(sta_vec.index(1))+' '+str(ind), config.use_log_path)
                 input=input_candidate[prob_candidate_ind:prob_candidate_ind+1]
                 sequence_length+=1
                 pos+=2
@@ -407,7 +364,7 @@ def main(_):
                 action=3
        
        
-        #delete word
+        #word deletion(action: 2)
           if action==2  and ind<sequence_length[0]-1:
             if sequence_length[0]<=2:
               action=3
@@ -458,12 +415,11 @@ def main(_):
                 prob_candidate.append(tem)
               prob_candidate=np.array(prob_candidate)
             
-              #similarity_candidate=np.array([similarity(x, input_original) for x in input_candidate])
               if sim!=None:
                 similarity_candidate=similarity_batch(input_candidate, input_original,sta_vec)
                 prob_candidate=prob_candidate*similarity_candidate
-            
-              #####There is a unsolved problem
+              
+              #alpha is acceptance ratio of current proposal
               prob_candidate_norm=normalize(prob_candidate)
               if input[0] in input_candidate:
                 for candidate_ind in range(len(input_candidate)):
@@ -474,12 +430,10 @@ def main(_):
               else:
                 pass
                 alpha=0
-              #alpha=min(prob_new_prob*config.action_prob[1]/(config.action_prob[2]*prob_old_prob), 1)
               print('action:2', alpha, prob_old_prob, prob_new_prob, prob_candidate_norm[candidate_ind], similarity_old)
               if ' '.join(id2sen(input[0])) not in output_p:
                 outputs.append([' '.join(id2sen(input[0])), prob_old_prob])
               if choose_action([alpha, 1-alpha])==0 and (prob_new_prob> prob_old_prob*config.threshold or just_acc()==0):
-                #write_log('step:'+str(iter)+'action:2 prob_old:'+str(prob_old_prob)+' prob_new:'+str(prob_new_prob)+' '+str(sta_vec.index(1))+' '+str(ind), config.use_log_path)
                 input=np.concatenate([input[:,:ind+1], input[:,ind+2:], input[:,:1]*0+config.dict_size+1], axis=1)
                 sequence_length-=1
                 pos+=0
@@ -487,15 +441,16 @@ def main(_):
                 sta_vec.append(0)
               else:
                 action=3
-          #do nothing
+          #skip word (action: 3)
           if action==3:
             #write_log('step:'+str(iter)+'action:3', config.use_log_path)
             pos+=1
           print(outputs)
           if outputs !=[]:
             output_p.append(outputs[-1][0])
+        
+        #choose output from samples
         for num in range(config.min_length, 0, -1):
-         
           outputss=[x for x in outputs if len(x[0].split())>=num]
           print(num,outputss)
           if outputss!=[]:
@@ -503,8 +458,8 @@ def main(_):
         if outputss==[]:
           outputss.append([' '.join(id2sen(input[0])),1])
         outputss=sorted(outputss, key=lambda x: x[1])[::-1]
-        #print(outputs, output_p)
         with open(config.use_output_path, 'a') as g:
           g.write(outputss[0][0]+'\n')
+
 if __name__ == "__main__":
   tf.app.run()

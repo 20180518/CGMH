@@ -1,11 +1,11 @@
 class config(object):
     def __init__(self):
-        #self.data_path='./data/output.pkl'
-        self.data_path='../data/quora/quora.pkl'
-        self.use_data_path='../data/quora/source.tok'
-        self.dict_path='../data/quora'
-        self.pos_path='../POS/english-models'
-        self.emb_path='../data/quora/emb.pkl'
+        self.data_path='../data/quora/quora.pkl'                                #path of data for training language model
+        self.use_data_path='../data/quora/source.tok'                       #data path of original sentences
+        self.dict_path='../data/quora'                                                   #dictionary path
+        self.pos_path='../POS/english-models'                                    #path for pos tagger
+        self.emb_path='../data/quora/emb.pkl'                                    #word embedding path, used when config.sim=='word_max' or config.sim=='combine'
+        self.skipthoughts_path='../skip_thought'                                  #path of skipthoughts, used when config.sim=='skipthoughts' or config.sim=='combine'
         self.dict_size=30000
         self.vocab_size=30003
         self.forward_save_path='./model/forward.ckpt'
@@ -16,7 +16,7 @@ class config(object):
         self.shuffle=False
         self.use_log_path='./log/use_log.txt'
         
-        self.skipthoughts_path='../skip_thought'
+
         
         self.batch_size=128
         self.num_steps=15
@@ -37,12 +37,12 @@ class config(object):
         self.sample_sentence_number=119
         
         self.search_size=100
-        self.use_output_path='./output/output_new_min_loss'
+        self.use_output_path='./output/output_new_min_loss'         #output path
       
         
-        self.action_prob=[0.3,0.2,0.2,0.3]
+        self.action_prob=[0.3,0.3,0.3,0.3]                                              #the prior of 4 actions
         self.threshold=0.1
-        self.sim='word_max'
+        self.sim='word_max'                                                                  #matching model
         self.double_LM=False
         self.keyword_pos=True
         self.keyboard_input=False

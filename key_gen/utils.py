@@ -40,7 +40,7 @@ def reverse_seq(input, sequence_length, target):
         for j in range(length):
             input_new[i][j+1]=input[i][length-j]
     return input_new.astype(np.int32), sequence_length.astype(np.int32), target_new.astype(np.int32)
-#
+
 def cut_from_point(input, sequence_length, ind, mode=0):
     batch_size=input.shape[0]
     num_steps=input.shape[1]
@@ -230,3 +230,7 @@ def just_acc():
         return 0
     else:
         return 1
+        
+def write_log(str, path):
+  with open(path, 'a') as g:
+    g.write(str+'\n')

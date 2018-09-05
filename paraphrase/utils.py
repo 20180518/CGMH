@@ -230,3 +230,7 @@ def just_acc():
         return 0
     else:
         return 1
+        
+def write_log(str, path):
+  with open(path, 'a') as g:
+    g.write(str+'\n')

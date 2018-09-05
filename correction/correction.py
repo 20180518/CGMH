@@ -8,7 +8,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.layers import core as layers_core
 import reader
-import util
 from config import config
 config=config()
 from tensorflow.python.client import device_lib
@@ -24,7 +23,7 @@ def data_type():
 
 
 class PTBInput(object):
-  """The input data."""
+  #The language model.
 
   def __init__(self, data, name=None):
     self.batch_size = batch_size = config.batch_size
@@ -108,51 +107,22 @@ class PTBModel(object):
 
     return outputs
   
-  def get_test_LM(self):
-    
-
-    return outputs
-        
-  @property
-  def input(self):
-    return self._input
-    
-  @property
-  def output_prob(self):
-    return self._output_prob
-  
-  @property
-  def target(self):
-    return self._target
-   
-  @property
-  def sequence_length(self):
-    return self._sequence_length
-
-  @property
-  def cost(self):
-    return self._cost
-
-  @property
-  def train_op(self):
-    return self._train_op
 
 
 def run_epoch(sess, model, input, sequence_length, target=None, mode='train'):
-  """Runs the model on the given data."""
+  #Runs the model on the given data.
   if mode=='train':
+    #train language model
     _,cost = sess.run([model.train_op, model.cost], feed_dict={model.input: input, model.target:target, model.sequence_length:sequence_length})
     return cost
   elif mode=='test':
+    #test language model
     cost = sess.run(model.cost, feed_dict={model.input: input, model.target:target, model.sequence_length:sequence_length})
     return cost
   else:
-    #output_prob = sess.run(model.output_prob, feed_dict={model.input: input, model.sequence_length:sequence_length})
+    #use the language model to calculate sentence probability
     output_prob = sess.run(model.output_prob, feed_dict={model.input: input, model.sequence_length:sequence_length})
     return output_prob
-def write_log(str, path):
-  with open(path, 'a') as g:
-    g.write(str+'\n')
 
 def main(_):
   if os.path.exists(config.forward_log_path) and config.mode=='forward':
@@ -193,6 +163,7 @@ def main(_):
   with tf.Session() as session:
     session.run(init)
     if config.mode=='forward':
+    	#train forward language model
       train_data, test_data = reader.read_data(config.data_path, config.num_steps)
       test_mean_old=15.0
       
@@ -216,6 +187,7 @@ def main(_):
         write_log('train ppl:'+str(np.mean(train_ppl_list))+'\t'+'test ppl:'+str(test_mean), config.forward_log_path)
     
     if config.mode=='backward':
+    	#train backward language model
       train_data, test_data = reader.read_data(config.data_path, config.num_steps)
       test_mean_old=15.0
       for epoch in range(config.max_epoch):
@@ -241,14 +213,16 @@ def main(_):
         write_log('train ppl:'+str(np.mean(train_ppl_list))+'\t'+'test ppl:'+str(test_mean), config.backward_log_path)
   
     if config.mode=='use':
+      #CGMH sampling for sentence_correction
       sim=config.sim
-      #keyword stable
       sta_vec=list(np.zeros([config.num_steps-1]))
 
       saver_forward.restore(session, config.forward_save_path)
       saver_backward.restore(session, config.backward_save_path)
       config.shuffle=False
+      #erroneous sentence input
       if config.keyboard_input==True:
+        #input from keyboard if key_input is not empty
         key_input=raw_input('please input a sentence\n')
         if key_input=='':
           use_data = reader.read_data_use(config.use_data_path, config.num_steps)
@@ -258,16 +232,15 @@ def main(_):
           #key_input=sen2id(key_input)
           use_data = [key_input]
       else:
+        #load keywords from file
         use_data=[]
         with open(config.use_data_path) as f:
           for line in f:
             use_data.append(line.strip().split())
       config.batch_size=1
-      #use_data.length=1 #######################################
       
       for sen_id in range(len(use_data)):
-        
-        
+        #generate for each sentence
         input_=use_data[sen_id]
         pos=0
 
@@ -275,22 +248,16 @@ def main(_):
         #ind is the index of the selected word, regardless of the beginning token.
           sta_vec=sen2sta_vec(' '.join(input_))
           input__=reader.array_data([sen2id(input_)], config.num_steps, config.dict_size)
-          #sequence_length=np.array([len(x)+1 for x in [input_]])
           input,sequence_length,_=input__(1,0)
           input_original=input[0]
 
           ind=pos%(sequence_length[0]-1)
-          #tem
           print(' '.join(input_))
           
           if iter in config.record_time:
             with open(config.use_output_path+str(iter), 'a') as g:
               g.write(' '.join(input_)+'\n')
-          #tem_end
-          #print(sta_vec, sequence_length[0], ind)
-          #if sta_vec[ind]==1 and action in [0, 2]:
-            #action=3
-        #change word
+              
           if True: 
             prob_old=run_epoch(session, mtest_forward, input, sequence_length, mode='use')
             if config.double_LM==True:
@@ -312,7 +279,6 @@ def main(_):
             input_candidate_=generate_change_candidate(input_, ind)
             tem=reader.array_data([sen2id(x) for x in input_candidate_], config.num_steps, config.dict_size)
             input_candidate,sequence_length_candidate,_=tem(len(input_candidate_),0)
-            #sequence_length=np.array([len(x)+1 for x in [input_candidate_]])
             
             prob_candidate_pre=run_epoch(session, mtest_forward, input_candidate, sequence_length_candidate, mode='use')
             if config.double_LM==True:
@@ -327,17 +293,15 @@ def main(_):
               prob_candidate.append(tem)
           
             prob_candidate=np.array(prob_candidate)
-            #similarity_candidate=np.array([similarity(x, input_original) for x in input_candidate])
             if sim!=None:
               similarity_candidate=similarity_batch(input_candidate, input_original)
               prob_candidate=prob_candidate*similarity_candidate
             prob_candidate_norm=normalize(prob_candidate)
             prob_candidate_ind=sample_from_candidate(prob_candidate_norm)
             prob_change_prob=prob_candidate[prob_candidate_ind]
-            #print(input_candidate_,prob_candidate_norm,prob_candidate_ind, prob_candidate)
             input_change_=input_candidate_[prob_candidate_ind]
           
-          #change another word
+          #word replacement (action: 0)
           if True: 
             if False:
               pass
@@ -360,7 +324,6 @@ def main(_):
                 tem*=prob_candidate_pre[i][j+1][config.dict_size+1]
                 prob_candidate.append(tem)
               prob_candidate=np.array(prob_candidate)
-              #similarity_candidate=np.array([similarity(x, input_original) for x in input_candidate])
               if config.sim_word==True:
                 similarity_candidate=similarity_batch(input_candidate[:,ind+1:ind+2], input_original[ind+1:ind+2])
                 prob_candidate=prob_candidate*similarity_candidate
@@ -372,7 +335,8 @@ def main(_):
               prob_changeanother_prob=prob_candidate_prob
               word=id2sen(input_candidate[prob_candidate_ind])[ind]
               input_changeanother_=input_[:ind]+[word]+input_[ind+1:]
-          #add word
+          
+          #word insertion(action:1)
           if True: 
             if sequence_length[0]>=config.num_steps:
               prob_add_prob=0
@@ -409,7 +373,7 @@ def main(_):
               word=id2sen(input_candidate[prob_candidate_ind])[ind]
               input_add_=input_[:ind]+[word]+input_[ind:]
 
-        #delete word
+        #word deletion(action: 2)
           if True:
             if sequence_length[0]<=2:
               prob_delete_prob=0
